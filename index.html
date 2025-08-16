@@ -1,111 +1,139 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <script type="module">
-  // Import the functions you need from the SDKs you need
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-app.js";
-  import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.1.0/firebase-analytics.js";
-  // TODO: Add SDKs for Firebase products that you want to use
-  // https://firebase.google.com/docs/web/setup#available-libraries
-
-  // Your web app's Firebase configuration
-  // For Firebase JS SDK v7.20.0 and later, measurementId is optional
-  // For Firebase JS SDK v7.20.0 and later, measurementId is optional
-const firebaseConfig = {
-  apiKey: "AIzaSyANdNxLF8GKvtxdCxogs30_8_3pg9P7x5Q",
-  authDomain: "attendance-calendar-ae106.firebaseapp.com",
-  projectId: "attendance-calendar-ae106",
-  storageBucket: "attendance-calendar-ae106.firebasestorage.app",
-  messagingSenderId: "963030500166",
-  appId: "1:963030500166:web:70783b84a1cb4cde221b47",
-  measurementId: "G-HZHJBWHB25"
-};
-
-  // Initialize Firebase
-  const app = initializeApp(firebaseConfig);
-  const analytics = getAnalytics(app);
-</script>
-<script> 
-    let userId = null;
-
-function login() {
-  const email = document.getElementById("email").value;
-  const password = document.getElementById("password").value;
-  auth.signInWithEmailAndPassword(email, password)
-    .then(user => {
-      userId = user.user.uid;
-      document.getElementById("loginPanel").style.display = "none";
-      document.getElementById("logoutBtn").style.display = "inline";
-      document.getElementById("userInfo").innerText = "Logged in as " + email;
-      loadCloudData();
-    })
-    .catch(err => alert(err.message));
-}
-
-function signup() {
-  const email = document.getElementById("email").value;
-  const password = document.getElementById("password").value;
-  auth.createUserWithEmailAndPassword(email, password)
-    .then(user => {
-      alert("Signup successful! Please login.");
-    })
-    .catch(err => alert(err.message));
-}
-
-function logout() {
-  auth.signOut().then(() => {
-    userId = null;
-    document.getElementById("loginPanel").style.display = "block";
-    document.getElementById("logoutBtn").style.display = "none";
-    document.getElementById("userInfo").innerText = "";
-    // Optionally reload for safety
-    location.reload();
-  });
-}
-
-// Monitor login status
-auth.onAuthStateChanged(user => {
-  if (user) {
-    userId = user.uid;
-    document.getElementById("loginPanel").style.display = "none";
-    document.getElementById("userInfo").innerText = "Logged in as " + user.email;
-    document.getElementById("logoutBtn").style.display = "inline";
-    loadCloudData();
-  } else {
-    userId = null;
-    document.getElementById("loginPanel").style.display = "block";
-    document.getElementById("logoutBtn").style.display = "none";
-    document.getElementById("userInfo").innerText = "";
-  }
-});
-
-</script>
   <meta charset="UTF-8" />
   <title>Night Shift Attendance Calendar with Cloud Login</title>
   <style>
     body { font-family: Arial, sans-serif; margin: 40px; max-width: 950px; }
-    /* ... all your existing styles ... */
-    /* (copy from your previous calendar's CSS) */
-    /* Calendar/table/button styles omitted for brevity (use your latest version) */
+    .calendar { display: inline-block; }
+    .calendar-table { border-collapse: collapse; }
+    .calendar-table th, .calendar-table td {
+      border: 1px solid #ccc;
+      width: 60px;
+      height: 90px;
+      text-align: center;
+      vertical-align: top;
+      cursor: pointer;
+      font-size: 14px;
+      user-select: none;
+      padding: 4px;
+    }
+    .calendar-table th {
+      background: #efefef;
+      font-weight: bold;
+      font-size: 16px;
+      height: 36px;
+    }
+    .day-number {
+      font-weight: bold;
+      font-size: 18px;
+      margin-bottom: 2px;
+    }
+    .day-name {
+      font-size: 11px;
+      color: #666;
+      margin-bottom: 6px;
+    }
+    .office { background: #d0f0c0; }
+    .leave { background: #f0d0c0; }
+    .off { background: #eee; }
+    .selected { outline: 2px solid #333; }
+    .status {
+      font-weight: bold;
+      font-size: 14px;
+      margin-bottom: 4px;
+    }
+    .notes {
+      font-size: 11px;
+      color: #555;
+      white-space: normal;
+      word-wrap: break-word;
+      max-height: 32px;
+      overflow: hidden;
+    }
+    button { margin: 5px; padding: 6px 12px; font-size: 14px; }
+    #noteInput, #batchNoteInput { width: 95%; font-size: 1em; }
+    #statsPanel {
+      margin-left: 20px;
+      display: inline-block;
+      vertical-align: top;
+      font-size: 14px;
+      line-height: 1.5;
+      border: 1px solid #ccc;
+      padding: 15px;
+      width: 210px;
+      background: #fafafa;
+      border-radius: 4px;
+      height: fit-content;
+    }
+    #navButtons {
+      margin-bottom: 15px;
+    }
+    #sidePanel {
+      display: flex;
+      flex-direction: row;
+    }
+    #editPanel, #batchEditPanel {
+      margin-left: 30px;
+      border: 1px solid #ccc;
+      padding: 16px;
+      border-radius: 5px;
+      background: #fafafa;
+      height: fit-content;
+      width: 220px;
+    }
+    #batchEditPanel {
+      display: none;
+    }
+    #multiSelectBtn {
+      margin-bottom: 10px;
+      background: #4479ba;
+      color: white;
+      border-radius: 5px;
+      border: none;
+      cursor: pointer;
+    }
+    #multiSelectBtn.active {
+      background: #b14479;
+    }
   </style>
+
   <!-- Firebase SDKs -->
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+
+  <!-- jsPDF -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+  <!-- Your Firebase config and initialization -->
+  <script>
+    const firebaseConfig = {
+      apiKey: "AIzaSyANdNxLF8GKvtxdCxogs30_8_3pg9P7x5Q",
+      authDomain: "attendance-calendar-ae106.firebaseapp.com",
+      projectId: "attendance-calendar-ae106",
+      storageBucket: "attendance-calendar-ae106.firebasestorage.app",
+      messagingSenderId: "963030500166",
+      appId: "1:963030500166:web:70783b84a1cb4cde221b47",
+      measurementId: "G-HZHJBWHB25"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const auth = firebase.auth();
+    const db = firebase.firestore();
+  </script>
 </head>
 <body>
-  <!-- LOGIN PANEL -->
+
+  <!-- Login panel -->
   <div id="loginPanel" style="margin-bottom:25px;">
-    <input type="email" id="email" placeholder="Email">
-    <input type="password" id="password" placeholder="Password">
+    <input type="email" id="email" placeholder="Email" />
+    <input type="password" id="password" placeholder="Password" />
     <button onclick="login()">Login</button>
     <button onclick="signup()">Sign up</button>
     <span id="userInfo" style="margin-left:12px;"></span>
     <button onclick="logout()" id="logoutBtn" style="margin-left:12px; display:none;">Logout</button>
   </div>
 
-  <!-- CALENDAR CONTROLS -->
   <h1>Night Shift Attendance Calendar</h1>
   <label>
     Select First Office Night:
@@ -123,125 +151,145 @@ auth.onAuthStateChanged(user => {
   <div id="sidePanel">
     <div id="calendarContainer" class="calendar"></div>
     <div id="statsPanel">
-      <!-- ... stats divs per your previous code ... -->
+      <b>Statistics</b>
+      <div id="statOffice">Office Nights: 0</div>
+      <div id="statLeave">Leave Nights: 0</div>
+      <div id="statOff">Off Nights: 0</div>
+      <div id="statAttendancePct">Attendance %: 0%</div>
     </div>
     <div id="editPanel" style="display:none;">
-      <!-- ... single date edit controls ... -->
+      <b>Edit Attendance:</b><br />
+      <div style="margin-bottom:6px;">
+        <span>Date: </span><span id="editDate" style="font-weight:bold;"></span>
+      </div>
+      <select id="editStatus">
+        <option value="Office">Office</option>
+        <option value="Leave">Leave</option>
+        <option value="Off">Off</option>
+      </select>
+      <br /><br />
+      <span>Notes:</span><br />
+      <input type="text" id="noteInput" placeholder="Optional" />
+      <br />
+      <button onclick="saveEdit()">Save</button>
+      <button onclick="cancelEdit()">Cancel</button>
     </div>
     <div id="batchEditPanel">
-      <!-- ... multi-select edit controls ... -->
+      <b>Batch Edit Selected Dates (<span id="selectedCount">0</span>):</b><br />
+      <select id="batchEditStatus">
+        <option value="Office">Office</option>
+        <option value="Leave">Leave</option>
+        <option value="Off">Off</option>
+      </select>
+      <br /><br />
+      <span>Notes:</span><br />
+      <input type="text" id="batchNoteInput" placeholder="Optional" />
+      <br />
+      <button onclick="applyBatchEdit()">Apply to Selected</button>
+      <button onclick="toggleMultiSelect()">Exit Multi-select</button>
     </div>
   </div>
 
-  <script>
-    // ---- FIREBASE CONFIG ----
-    // Replace with your Firebase config below!
-    const firebaseConfig = {
-      apiKey: "AIzaSyANdNxLF8GKvtxdCxogs30_8_3pg9P7x5Q",
-  authDomain: "attendance-calendar-ae106.firebaseapp.com",
-  projectId: "attendance-calendar-ae106",
-  storageBucket: "attendance-calendar-ae106.firebasestorage.app",
-  messagingSenderId: "963030500166",
-  appId: "1:963030500166:web:70783b84a1cb4cde221b47",
-  measurementId: "G-HZHJBWHB25"
-      // ... etc ...
-    };
-    firebase.initializeApp(firebaseConfig);
-    const auth = firebase.auth();
-    const db = firebase.firestore();
+<script>
+  // Firebase user info
+  let userId = null;
+  let userEmail = "";
 
-    // ---- USER LOGIN ----
-    let userId = null;
-    let userEmail = "";
+  // Attendance calendar state
+  let attendanceMap = {};
+  let firstOfficeDate = null;
+  let selectedEditDate = null;
+  let currentYear, currentMonth;
+  let multiSelectMode = false;
+  let selectedDates = [];
 
-    function login() {
-      const email = document.getElementById("email").value;
-      const password = document.getElementById("password").value;
-      auth.signInWithEmailAndPassword(email, password)
-        .then(user => {
-          userId = user.user.uid;
-          userEmail = email;
-          document.getElementById("loginPanel").style.display = "none";
-          document.getElementById("logoutBtn").style.display = "inline-block";
-          document.getElementById("userInfo").innerText = "Logged in as " + email;
-          loadCloudData();
-        })
-        .catch(err => alert(err.message));
-    }
-
-    function signup() {
-      const email = document.getElementById("email").value;
-      const password = document.getElementById("password").value;
-      auth.createUserWithEmailAndPassword(email, password)
-        .then(user => {
-          alert("Signup successful! Please login.");
-        })
-        .catch(err => alert(err.message));
-    }
-
-    function logout() {
-      auth.signOut().then(() => {
-        userId = null;
-        userEmail = "";
-        document.getElementById("loginPanel").style.display = "block";
-        document.getElementById("logoutBtn").style.display = "none";
-        document.getElementById("userInfo").innerText = "";
-        location.reload();
-      });
-    }
-
-    auth.onAuthStateChanged(user => {
-      if (user) {
-        userId = user.uid;
-        userEmail = user.email;
+  // Firebase auth functions
+  function login() {
+    const email = document.getElementById("email").value;
+    const password = document.getElementById("password").value;
+    auth.signInWithEmailAndPassword(email, password)
+      .then(user => {
+        userId = user.user.uid;
+        userEmail = email;
         document.getElementById("loginPanel").style.display = "none";
-        document.getElementById("userInfo").innerText = "Logged in as " + user.email;
         document.getElementById("logoutBtn").style.display = "inline-block";
+        document.getElementById("userInfo").innerText = "Logged in as " + email;
         loadCloudData();
-      } else {
-        userId = null;
-        userEmail = "";
-        document.getElementById("loginPanel").style.display = "block";
-        document.getElementById("logoutBtn").style.display = "none";
-        document.getElementById("userInfo").innerText = "";
-      }
+      })
+      .catch(err => alert(err.message));
+  }
+
+  function signup() {
+    const email = document.getElementById("email").value;
+    const password = document.getElementById("password").value;
+    auth.createUserWithEmailAndPassword(email, password)
+      .then(() => alert("Signup successful! Please login."))
+      .catch(err => alert(err.message));
+  }
+
+  function logout() {
+    auth.signOut().then(() => {
+      userId = null;
+      userEmail = "";
+      document.getElementById("loginPanel").style.display = "block";
+      document.getElementById("logoutBtn").style.display = "none";
+      document.getElementById("userInfo").innerText = "";
+      location.reload();
     });
+  }
 
-    // ---- CALENDAR LOGIC ----
-    // (Paste your latest calendar JS code here, with these two functions replaced)
-
-    function saveAttendanceData(year, month) {
-  if (!userId) return;
-  db.collection("attendance").doc(userId).set({
-    [`${year}_${month}`]: attendanceMap
-  }, { merge: true });
-}
-
-function loadCloudData() {
-  if (!userId) return;
-  db.collection("attendance").doc(userId).get().then((doc) => {
-    if (doc.exists) {
-      const data = doc.data();
-      const key = `${currentYear}_${currentMonth}`;
-      attendanceMap = data[key] ? data[key] : {};
-      if (Object.keys(attendanceMap).length === 0) initializeMonthData(currentYear, currentMonth);
-      drawCalendar(currentYear, currentMonth);
-      updateStats();
-      resetEditPanel();
+  auth.onAuthStateChanged(user => {
+    if (user) {
+      userId = user.uid;
+      userEmail = user.email;
+      document.getElementById("loginPanel").style.display = "none";
+      document.getElementById("userInfo").innerText = "Logged in as " + user.email;
+      document.getElementById("logoutBtn").style.display = "inline-block";
+      loadCloudData();
     } else {
-      initializeMonthData(currentYear, currentMonth);
-      drawCalendar(currentYear, currentMonth);
-      updateStats();
-      resetEditPanel();
+      userId = null;
+      userEmail = "";
+      document.getElementById("loginPanel").style.display = "block";
+      document.getElementById("logoutBtn").style.display = "none";
+      document.getElementById("userInfo").innerText = "";
     }
   });
-}
 
+  function saveAttendanceData(year, month) {
+    if (!userId) return;
+    const docKey = `${year}_${month}`;
+    db.collection("attendance").doc(userId).set({
+      [docKey]: attendanceMap
+    }, { merge: true });
+  }
 
-    // Paste all your previous JS code for drawing calendar, stats, multi-select, single-edit, PDF export, etc.
+  function loadCloudData() {
+    if (!userId) return;
+    const docKey = `${currentYear}_${currentMonth}`;
+    db.collection("attendance").doc(userId).get().then(doc => {
+      if (doc.exists) {
+        const data = doc.data();
+        attendanceMap = data[docKey] ? data[docKey] : {};
+        if (Object.keys(attendanceMap).length === 0) initializeMonthData(currentYear, currentMonth);
+      } else {
+        initializeMonthData(currentYear, currentMonth);
+      }
+      drawCalendar(currentYear, currentMonth);
+      updateStats();
+      resetEditPanel();
+    });
+  }
 
-    // The only change from your latest version is: cloud data replaces localStorage, and calendar loading/saving works per user login.
+  // Calendar and UI functions below (your previous full calendar code)
+  // Ensure saveAttendanceData and loadCloudData are called instead of localStorage
 
-  </script>
+  //... Paste the rest of your calendar code, including:
+  // init(), initializeMonthData(), drawCalendar(), editAttendance(), saveEdit(),
+  // cancelEdit(), toggleMultiSelect(), toggleDateSelected(), applyBatchEdit(),
+  // updateStats(), prevMonth(), nextMonth(), loadOrInitMonth(), exportCalendarPDF()
+  
+  // Due to length limits, paste your existing calendar JS here with above Firebase data savings integrated.
+
+</script>
 </body>
 </html>
