@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Enhanced Night Shift Attendance Calendar</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 40px; max-width: 950px; }
+    .calendar { display: inline-block; }
+    .calendar-table { border-collapse: collapse; }
+    .calendar-table th, .calendar-table td {
+      border: 1px solid #ccc;
+      width: 60px;
+      height: 90px;
+      text-align: center;
+      vertical-align: top;
+      cursor: pointer;
+      font-size: 14px;
+      user-select: none;
+      padding: 4px;
+    }
+    .calendar-table th {
+      background: #efefef;
+      font-weight: bold;
+      font-size: 16px;
+      height: 36px;
+    }
+    .day-number {
+      font-weight: bold;
+      font-size: 18px;
+      margin-bottom: 2px;
+    }
+    .day-name {
+      font-size: 11px;
+      color: #666;
+      margin-bottom: 6px;
+    }
+    .office { background: #d0f0c0; }
+    .leave { background: #f0d0c0; }
+    .off { background: #eee; }
+    .selected { outline: 2px solid #333; }
+    .status {
+      font-weight: bold;
+      font-size: 14px;
+      margin-bottom: 4px;
+    }
+    .notes {
+      font-size: 11px;
+      color: #555;
+      white-space: normal;
+      word-wrap: break-word;
+      max-height: 32px;
+      overflow: hidden;
+    }
+    button { margin: 5px; padding: 6px 12px; font-size: 14px; }
+    #noteInput, #batchNoteInput { width: 95%; font-size: 1em; }
+    #statsPanel {
+      margin-left: 20px;
+      display: inline-block;
+      vertical-align: top;
+      font-size: 14px;
+      line-height: 1.5;
+      border: 1px solid #ccc;
+      padding: 15px;
+      width: 210px;
+      background: #fafafa;
+      border-radius: 4px;
+      height: fit-content;
+    }
+    #navButtons {
+      margin-bottom: 15px;
+    }
+    #sidePanel {
+      display: flex;
+      flex-direction: row;
+    }
+    #editPanel, #batchEditPanel {
+      margin-left: 30px;
+      border: 1px solid #ccc;
+      padding: 16px;
+      border-radius: 5px;
+      background: #fafafa;
+      height: fit-content;
+      width: 220px;
+    }
+    #batchEditPanel {
+      display: none;
+    }
+    #multiSelectBtn {
+      margin-bottom: 10px;
+      background: #4479ba;
+      color: white;
+      border-radius: 5px;
+      border: none;
+      cursor: pointer;
+    }
+    #multiSelectBtn.active {
+      background: #b14479;
+    }
+  </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+</head>
+<body>
+  <h1>Enhanced Night Shift Attendance Calendar</h1>
+  <label>
+    Select First Office Night:
+    <input type="date" id="startDate" value="2025-08-15" />
+  </label>
+  <button onclick="init()">Initialize</button>
+
+  <div id="navButtons" style="margin-top:20px;">
+    <button onclick="prevMonth()">← Previous Month</button>
+    <button onclick="nextMonth()">Next Month →</button>
+    <button onclick="exportCalendarPDF()">Export Current Month as PDF</button>
+  </div>
+  <button id="multiSelectBtn" onclick="toggleMultiSelect()">Enable Multi-select Mode</button>
+
+  <div id="sidePanel">
+    <div id="calendarContainer" class="calendar"></div>
+    <div id="statsPanel">
+      <b>Statistics</b>
+      <div id="statOffice">Office Nights: 0</div>
+      <div id="statLeave">Leave Nights: 0</div>
+      <div id="statOff">Off Nights: 0</div>
+      <div id="statAttendancePct">Attendance %: 0%</div>
+    </div>
+    <div id="editPanel" style="display:none;">
+      <b>Edit Attendance:</b><br />
+      <div style="margin-bottom:6px;">
+        <span>Date: </span><span id="editDate" style="font-weight:bold;"></span>
+      </div>
+      <select id="editStatus">
+        <option value="Office">Office</option>
+        <option value="Leave">Leave</option>
+        <option value="Off">Off</option>
+      </select>
+      <br><br>
+      <span>Notes:</span><br>
+      <input type="text" id="noteInput" placeholder="Optional" />
+      <br>
+      <button onclick="saveEdit()">Save</button>
+      <button onclick="cancelEdit()">Cancel</button>
+    </div>
+    <div id="batchEditPanel">
+      <b>Batch Edit Selected Dates (<span id="selectedCount">0</span>):</b><br>
+      <select id="batchEditStatus">
+        <option value="Office">Office</option>
+        <option value="Leave">Leave</option>
+        <option value="Off">Off</option>
+      </select>
+      <br><br>
+      <span>Notes:</span><br>
+      <input type="text" id="batchNoteInput" placeholder="Optional" />
+      <br>
+      <button onclick="applyBatchEdit()">Apply to Selected</button>
+      <button onclick="toggleMultiSelect()">Exit Multi-select</button>
+    </div>
+  </div>
+
+  <script>
+    let attendanceMap = {};
+    let firstOfficeDate = null;
+    let selectedEditDate = null;
+    let currentYear, currentMonth;
+    let multiSelectMode = false;
+    let selectedDates = [];
+
+    function saveAttendanceData(year, month) {
+      const key = `attendance_${year}_${month}`;
+      localStorage.setItem(key, JSON.stringify(attendanceMap));
+    }
+
+    function loadAttendanceData(year, month) {
+      const key = `attendance_${year}_${month}`;
+      const saved = localStorage.getItem(key);
+      return saved ? JSON.parse(saved) : null;
+    }
+
+    function init() {
+      const startDateStr = document.getElementById("startDate").value;
+      if (!startDateStr) {
+        alert("Please select the first office night date.");
+        return;
+      }
+      firstOfficeDate = new Date(startDateStr);
+      currentYear = firstOfficeDate.getFullYear();
+      currentMonth = firstOfficeDate.getMonth();
+
+      const loaded = loadAttendanceData(currentYear, currentMonth);
+      if (loaded) {
+        attendanceMap = loaded;
+      } else {
+        initializeMonthData(currentYear, currentMonth);
+        saveAttendanceData(currentYear, currentMonth);
+      }
+      selectedDates = [];
+      drawCalendar(currentYear, currentMonth);
+      updateStats();
+      resetEditPanel();
+    }
+
+    function initializeMonthData(year, month) {
+      attendanceMap = {};
+      const monthStart = new Date(year, month, 1);
+      const monthEnd = new Date(year, month + 1, 0);
+
+      let date = new Date(monthStart);
+      while (date <= monthEnd) {
+        const dateStr = date.toISOString().slice(0, 10);
+        const diffDays = Math.floor((date - firstOfficeDate) / (1000 * 60 * 60 * 24));
+        let status = "Off";
+        if (diffDays >= 0) {
+          status = diffDays % 2 === 0 ? "Office" : "Off";
+        }
+        attendanceMap[dateStr] = { status: status, notes: "" };
+        date.setDate(date.getDate() + 1);
+      }
+    }
+
+    function drawCalendar(year, month) {
+      const weekDays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+      const monthStart = new Date(year, month, 1);
+      const monthEnd = new Date(year, month + 1, 0);
+      let table = `<table class="calendar-table">
+        <tr>${weekDays.map(day => `<th>${day}</th>`).join("")}</tr>`;
+
+      let weekRow = [];
+      let datePointer = new Date(monthStart);
+
+      for (let i = 0; i < datePointer.getDay(); i++) {
+        weekRow.push("<td></td>");
+      }
+
+      while (datePointer <= monthEnd) {
+        const dateStr = datePointer.toISOString().slice(0, 10);
+        const entry = attendanceMap[dateStr];
+        let cellClass = entry ? entry.status.toLowerCase() : "";
+        let dayName = datePointer.toLocaleDateString('default', { weekday: 'long' });
+        let notesHtml = entry && entry.notes ? `<div class="notes">${entry.notes}</div>` : "";
+
+        // Multi-select mode logic
+        let extraClass = "";
+        if (multiSelectMode && selectedDates.includes(dateStr)) {
+          extraClass = " selected";
+        }
+
+        let onclickHandler = multiSelectMode
+          ? `toggleDateSelected('${dateStr}', this)`
+          : `editAttendance('${dateStr}', this)`;
+
+        weekRow.push(
+          `<td class="${cellClass}${extraClass}" onclick="${onclickHandler}">
+            <div class="day-number">${datePointer.getDate()}</div>
+            <div class="day-name">${dayName}</div>
+            <div class="status">${entry ? entry.status : ""}</div>
+            ${notesHtml}
+          </td>`
+        );
+
+        if (datePointer.getDay() === 6) {
+          table += `<tr>${weekRow.join("")}</tr>`;
+          weekRow = [];
+        }
+        datePointer.setDate(datePointer.getDate() + 1);
+      }
+
+      if (weekRow.length > 0) {
+        while (weekRow.length < 7) weekRow.push("<td></td>");
+        table += `<tr>${weekRow.join("")}</tr>`;
+      }
+      table += "</table>";
+
+      document.getElementById("calendarContainer").innerHTML = table;
+      document.getElementById("selectedCount").innerText = selectedDates.length;
+    }
+
+    function resetEditPanel() {
+      document.getElementById("editPanel").style.display = "none";
+      document.getElementById("batchEditPanel").style.display = multiSelectMode ? "block" : "none";
+      selectedEditDate = null;
+      document.querySelectorAll(".calendar-table td").forEach((td) => td.classList.remove("selected"));
+    }
+
+    function editAttendance(dateStr, cell) {
+      if (multiSelectMode) return;
+      selectedEditDate = dateStr;
+      document.querySelectorAll(".calendar-table td").forEach((td) => td.classList.remove("selected"));
+      cell.classList.add("selected");
+
+      const entry = attendanceMap[dateStr];
+      document.getElementById("editDate").innerText = dateStr;
+      document.getElementById("editStatus").value = entry.status;
+      document.getElementById("noteInput").value = entry.notes || "";
+      document.getElementById("editPanel").style.display = "block";
+      document.getElementById("batchEditPanel").style.display = "none";
+    }
+
+    function saveEdit() {
+      if (!selectedEditDate) return;
+      attendanceMap[selectedEditDate].status = document.getElementById("editStatus").value;
+      attendanceMap[selectedEditDate].notes = document.getElementById("noteInput").value;
+      saveAttendanceData(currentYear, currentMonth);
+      drawCalendar(currentYear, currentMonth);
+      updateStats();
+      resetEditPanel();
+    }
+
+    function cancelEdit() {
+      resetEditPanel();
+    }
+
+    function toggleMultiSelect() {
+      multiSelectMode = !multiSelectMode;
+      selectedDates = [];
+      document.getElementById("multiSelectBtn").innerText = multiSelectMode ? "Exit Multi-select Mode" : "Enable Multi-select Mode";
+      document.getElementById("multiSelectBtn").classList.toggle("active", multiSelectMode);
+      document.getElementById("editPanel").style.display = "none";
+      document.getElementById("batchEditPanel").style.display = multiSelectMode ? "block" : "none";
+      drawCalendar(currentYear, currentMonth);
+    }
+
+    function toggleDateSelected(dateStr, cell) {
+      if (selectedDates.includes(dateStr)) {
+        selectedDates = selectedDates.filter(d => d !== dateStr);
+      } else {
+        selectedDates.push(dateStr);
+      }
+      drawCalendar(currentYear, currentMonth);
+      document.getElementById("selectedCount").innerText = selectedDates.length;
+    }
+
+    function applyBatchEdit() {
+      const batchStatus = document.getElementById("batchEditStatus").value;
+      const batchNote = document.getElementById("batchNoteInput").value;
+      selectedDates.forEach(dateStr => {
+        attendanceMap[dateStr].status = batchStatus;
+        attendanceMap[dateStr].notes = batchNote;
+      });
+      saveAttendanceData(currentYear, currentMonth);
+      drawCalendar(currentYear, currentMonth);
+      updateStats();
+      selectedDates = [];
+      document.getElementById("selectedCount").innerText = selectedDates.length;
+    }
+
+    function updateStats() {
+      let officeCount = 0;
+      let leaveCount = 0;
+      let offCount = 0;
+      Object.values(attendanceMap).forEach((entry) => {
+        if (entry.status === "Office") officeCount++;
+        else if (entry.status === "Leave") leaveCount++;
+        else if (entry.status === "Off") offCount++;
+      });
+      const totalScheduled = officeCount + leaveCount + offCount;
+      const attendancePct = totalScheduled > 0 ? ((officeCount / totalScheduled) * 100).toFixed(1) : "0";
+      document.getElementById("statOffice").innerText = `Office Nights: ${officeCount}`;
+      document.getElementById("statLeave").innerText = `Leave Nights: ${leaveCount}`;
+      document.getElementById("statOff").innerText = `Off Nights: ${offCount}`;
+      document.getElementById("statAttendancePct").innerText = `Attendance %: ${attendancePct}%`;
+    }
+
+    function prevMonth() {
+      if (!currentYear && !currentMonth) return;
+      currentMonth--;
+      if (currentMonth < 0) {
+        currentMonth = 11;
+        currentYear--;
+      }
+      loadOrInitMonth(currentYear, currentMonth);
+      resetEditPanel();
+      selectedDates = [];
+    }
+
+    function nextMonth() {
+      if (!currentYear && !currentMonth) return;
+      currentMonth++;
+      if (currentMonth > 11) {
+        currentMonth = 0;
+        currentYear++;
+      }
+      loadOrInitMonth(currentYear, currentMonth);
+      resetEditPanel();
+      selectedDates = [];
+    }
+
+    function loadOrInitMonth(year, month) {
+      let loaded = loadAttendanceData(year, month);
+      if (loaded) {
+        attendanceMap = loaded;
+      } else {
+        initializeMonthData(year, month);
+        saveAttendanceData(year, month);
+      }
+      drawCalendar(year, month);
+      updateStats();
+      resetEditPanel();
+    }
+
+    function exportCalendarPDF() {
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF({ orientation: "landscape", format: "a3" });
+
+      doc.setFontSize(20);
+      doc.text("Night Shift Attendance Calendar", 15, 25);
+
+      const monthName = new Date(currentYear, currentMonth, 1).toLocaleString("default", {
+        month: "long",
+      });
+      doc.setFontSize(14);
+      doc.text(`${monthName} ${currentYear}`, 15, 45);
+
+      const cellW = 36, cellH = 27;
+      const xStart = 25, yStart = 60;
+      const weekDays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+      weekDays.forEach((day, idx) => {
+        doc.setFillColor(220, 220, 220);
+        doc.rect(xStart + idx * cellW, yStart, cellW, cellH, "F");
+        doc.setTextColor(0);
+        doc.setFontSize(13);
+        doc.text(day, xStart + 9 + idx * cellW, yStart + 18);
+      });
+
+      let datePointer = new Date(currentYear, currentMonth, 1);
+      let firstCol = datePointer.getDay();
+      let totalDays = new Date(currentYear, currentMonth + 1, 0).getDate();
+      let rows = Math.ceil((firstCol + totalDays) / 7);
+
+      datePointer = new Date(currentYear, currentMonth, 1);
+      let col = datePointer.getDay();
+      let row = 1;
+
+      while (datePointer.getMonth() === currentMonth) {
+        const dateStr = datePointer.toISOString().slice(0, 10);
+        const cellX = xStart + col * cellW;
+        const cellY = yStart + row * cellH;
+        const entry = attendanceMap[dateStr];
+        let fill = [255, 255, 255];
+        let statusText = "", notesText = "";
+        if (entry) {
+          if (entry.status === "Office") {
+            fill = [208, 240, 192];
+            statusText = "Office";
+          } else if (entry.status === "Leave") {
+            fill = [240, 208, 192];
+            statusText = "Leave";
+          } else if (entry.status === "Off") {
+            fill = [230, 230, 230];
+            statusText = "Off";
+          }
+          notesText = entry.notes || "";
+        }
+        doc.setFillColor(...fill);
+        doc.rect(cellX, cellY, cellW, cellH, "F");
+        doc.setDrawColor(180, 180, 180);
+        doc.rect(cellX, cellY, cellW, cellH);
+
+        doc.setFontSize(12);
+        doc.text(String(datePointer.getDate()), cellX + 4, cellY + 12);
+
+        doc.setFontSize(9);
+        const dayAbbr = datePointer.toLocaleDateString('default', { weekday: 'short' });
+        doc.text(dayAbbr, cellX + 4, cellY + 21);
+
+        doc.setFontSize(11);
+        doc.text(statusText, cellX + 4, cellY + 25);
+
+        if (notesText) {
+          doc.setFontSize(8);
+          doc.text(notesText, cellX + 2, cellY + 27);
+        }
+        doc.setFontSize(12);
+
+        if (col === 6) {
+          col = 0;
+          row++;
+        } else {
+          col++;
+        }
+        datePointer.setDate(datePointer.getDate() + 1);
+      }
+
+      doc.save("attendance_calendar.pdf");
+    }
+  </script>
+</body>
+</html>
