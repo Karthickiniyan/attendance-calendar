@@ -88,17 +88,79 @@
     }
     #multiSelectBtn.active { background: #b14479; }
   </style>
-
   <!-- Firebase SDKs -->
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
-
-  <!-- jsPDF -->
+  <!-- jsPDF for PDF exporting -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-
+</head>
+<body>
+  <!-- Login controls -->
+  <div id="loginPanel" style="margin-bottom:25px;">
+    <input type="email" id="email" placeholder="Email" />
+    <input type="password" id="password" placeholder="Password" />
+    <button onclick="login()">Login</button>
+    <button onclick="signup()">Sign up</button>
+    <span id="userInfo" style="margin-left:12px;"></span>
+    <button onclick="logout()" id="logoutBtn" style="margin-left:12px; display:none;">Logout</button>
+  </div>
+  <!-- Calendar controls -->
+  <h1>Night Shift Attendance Calendar</h1>
+  <label>
+    Select First Office Night:
+    <input type="date" id="startDate" value="2025-08-15" />
+  </label>
+  <button onclick="init()">Initialize</button>
+  <div id="navButtons" style="margin-top:20px;">
+    <button onclick="prevMonth()">← Previous Month</button>
+    <button onclick="nextMonth()">Next Month →</button>
+    <button onclick="exportCalendarPDF()">Export Current Month as PDF</button>
+  </div>
+  <button id="multiSelectBtn" onclick="toggleMultiSelect()">Enable Multi-select Mode</button>
+  <div id="sidePanel">
+    <div id="calendarContainer" class="calendar"></div>
+    <div id="statsPanel">
+      <b>Statistics</b>
+      <div id="statOffice">Office Nights: 0</div>
+      <div id="statLeave">Leave Nights: 0</div>
+      <div id="statOff">Off Nights: 0</div>
+      <div id="statAttendancePct">Attendance %: 0%</div>
+    </div>
+    <div id="editPanel" style="display:none;">
+      <b>Edit Attendance:</b><br />
+      <div style="margin-bottom:6px;">
+        <span>Date: </span><span id="editDate" style="font-weight:bold;"></span>
+      </div>
+      <select id="editStatus">
+        <option value="Office">Office</option>
+        <option value="Leave">Leave</option>
+        <option value="Off">Off</option>
+      </select>
+      <br /><br />
+      <span>Notes:</span><br />
+      <input type="text" id="noteInput" placeholder="Optional" />
+      <br />
+      <button onclick="saveEdit()">Save</button>
+      <button onclick="cancelEdit()">Cancel</button>
+    </div>
+    <div id="batchEditPanel">
+      <b>Batch Edit Selected Dates (<span id="selectedCount">0</span>):</b><br />
+      <select id="batchEditStatus">
+        <option value="Office">Office</option>
+        <option value="Leave">Leave</option>
+        <option value="Off">Off</option>
+      </select>
+      <br /><br />
+      <span>Notes:</span><br />
+      <input type="text" id="batchNoteInput" placeholder="Optional" />
+      <br />
+      <button onclick="applyBatchEdit()">Apply to Selected</button>
+      <button onclick="toggleMultiSelect()">Exit Multi-select</button>
+    </div>
+  </div>
   <script>
-    // Firebase config - replace with your project config
+    // Your Firebase config - replace with your project config
     const firebaseConfig = {
       apiKey: "AIzaSyANdNxLF8GKvtxdCxogs30_8_3pg9P7x5Q",
       authDomain: "attendance-calendar-ae106.firebaseapp.com",
@@ -172,7 +234,6 @@
         [docKey]: attendanceMap
       }, { merge: true });
     }
-
     function loadCloudData() {
       if (!userId) return;
       const docKey = `${currentYear}_${currentMonth}`;
@@ -191,7 +252,6 @@
         resetEditPanel();
       });
     }
-
     function init() {
       const startDateStr = document.getElementById("startDate").value;
       if (!startDateStr) {
@@ -207,7 +267,6 @@
       currentMonth = firstOfficeDate.getMonth();
       loadCloudData();
     }
-
     function initializeMonthData(year, month) {
       attendanceMap = {};
       const monthStart = new Date(year, month, 1);
@@ -224,7 +283,6 @@
         date.setDate(date.getDate() + 1);
       }
     }
-
     function drawCalendar(year, month) {
       const weekDays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
       const monthStart = new Date(year, month, 1);
@@ -266,14 +324,12 @@
       document.getElementById("calendarContainer").innerHTML = table;
       document.getElementById("selectedCount").innerText = selectedDates.length;
     }
-
     function resetEditPanel() {
       document.getElementById("editPanel").style.display = "none";
       document.getElementById("batchEditPanel").style.display = multiSelectMode ? "block" : "none";
       selectedEditDate = null;
       document.querySelectorAll(".calendar-table td").forEach(td => td.classList.remove("selected"));
     }
-
     function editAttendance(dateStr, cell) {
       if (multiSelectMode) return;
       selectedEditDate = dateStr;
@@ -286,7 +342,6 @@
       document.getElementById("editPanel").style.display = "block";
       document.getElementById("batchEditPanel").style.display = "none";
     }
-
     function saveEdit() {
       if (!selectedEditDate) return;
       attendanceMap[selectedEditDate].status = document.getElementById("editStatus").value;
@@ -296,11 +351,9 @@
       updateStats();
       resetEditPanel();
     }
-
     function cancelEdit() {
       resetEditPanel();
     }
-
     function toggleMultiSelect() {
       multiSelectMode = !multiSelectMode;
       selectedDates = [];
@@ -311,7 +364,6 @@
       document.getElementById("batchEditPanel").style.display = multiSelectMode ? "block" : "none";
       drawCalendar(currentYear, currentMonth);
     }
-
     function toggleDateSelected(dateStr, cell) {
       if (selectedDates.includes(dateStr)) {
         selectedDates = selectedDates.filter(d => d !== dateStr);
@@ -321,7 +373,6 @@
       drawCalendar(currentYear, currentMonth);
       document.getElementById("selectedCount").innerText = selectedDates.length;
     }
-
     function applyBatchEdit() {
       const batchStatus = document.getElementById("batchEditStatus").value;
       const batchNote = document.getElementById("batchNoteInput").value;
@@ -335,7 +386,6 @@
       selectedDates = [];
       document.getElementById("selectedCount").innerText = 0;
     }
-
     function updateStats() {
       let officeCount = 0, leaveCount = 0, offCount = 0;
       Object.values(attendanceMap).forEach(entry => {
@@ -350,7 +400,6 @@
       document.getElementById("statOff").innerText = `Off Nights: ${offCount}`;
       document.getElementById("statAttendancePct").innerText = `Attendance %: ${percent}%`;
     }
-
     function prevMonth() {
       if (currentMonth === undefined || currentYear === undefined) return;
       currentMonth--;
@@ -361,7 +410,6 @@
       resetEditPanel();
       selectedDates = [];
     }
-
     function nextMonth() {
       if (currentMonth === undefined || currentYear === undefined) return;
       currentMonth++;
@@ -372,7 +420,6 @@
       resetEditPanel();
       selectedDates = [];
     }
-
     function loadOrInitMonth(year, month) {
       if (!userId) {
         alert("Please log in.");
@@ -396,7 +443,6 @@
         resetEditPanel();
       });
     }
-
     function exportCalendarPDF() {
       const { jsPDF } = window.jspdf;
       const doc = new jsPDF({ orientation: "landscape", format: "a3" });
