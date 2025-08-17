@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Night Shift Attendance Calendar with Per-Cycle Colors and PDF Export</title>
+  <title>Night Shift Attendance Calendar</title>
   <style>
     body { font-family: Arial, sans-serif; margin: 40px; max-width: 950px; }
     .calendar { display: inline-block; }
@@ -66,7 +66,7 @@
       border-radius: 4px;
       height: fit-content;
     }
-    #navButtons { margin-bottom: 15px; }
+    #navButtons { margin-bottom: 10px; }
     #sidePanel { display: flex; flex-direction: row; }
     #editPanel, #batchEditPanel {
       margin-left: 30px;
@@ -99,12 +99,17 @@
       margin-top: 5px;
       display: none;
     }
+    #monthNameDisplay {
+      font-size: 18px;
+      font-weight: bold;
+      margin: 10px 0;
+      color: #4479ba;
+      letter-spacing: 2px;
+    }
   </style>
-  <!-- Firebase SDKs -->
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
-  <!-- jsPDF for PDF exporting -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
 <body>
@@ -113,12 +118,11 @@
     <input type="password" id="password" placeholder="Password" />
     <button onclick="login()">Login</button>
     <button onclick="signup()">Sign up</button>
-    <span id="userInfo" style="margin-left:12px;"></span>
+    <span id="userInfo" style="margin-left:12px; font-weight:bold;"></span>
   </div>
   <button onclick="logout()" id="logoutBtn">Logout</button>
 
   <h1>Night Shift Attendance Calendar</h1>
-
   <label>
     Select First Office Night:
     <input type="date" id="startDate" value="2025-08-15" />
@@ -140,14 +144,15 @@
     <div id="cyclesList" style="margin-top: 10px; font-size: 14px;"></div>
   </div>
 
-  <div id="navButtons" style="margin-bottom: 15px;">
+  <div id="navButtons">
     <button onclick="prevMonth()">← Previous Month</button>
     <button onclick="nextMonth()">Next Month →</button>
     <button onclick="exportCalendarPDF()">Export Current Month as PDF</button>
   </div>
 
-  <button id="multiSelectBtn" onclick="toggleMultiSelect()">Enable Multi-select Mode</button>
+  <div id="monthNameDisplay"></div>
 
+  <button id="multiSelectBtn" onclick="toggleMultiSelect()">Enable Multi-select Mode</button>
   <div id="sidePanel">
     <div id="calendarContainer" class="calendar"></div>
     <div id="statsPanel">
@@ -191,6 +196,7 @@
   </div>
 
   <script>
+    // Replace with your actual Firebase config for production
     const firebaseConfig = {
       apiKey: "AIzaSyANdNxLF8GKvtxdCxogs30_8_3pg9P7x5Q",
       authDomain: "attendance-calendar-ae106.firebaseapp.com",
@@ -204,21 +210,18 @@
     const auth = firebase.auth();
     const db = firebase.firestore();
 
-    let userId = null;
-    let attendanceMap = {};
-    let firstOfficeDate = null;
-    let selectedEditDate = null;
-    let currentYear, currentMonth;
-    let multiSelectMode = false;
-    let selectedDates = [];
-    let cycles = [];
+    let userId = null, attendanceMap = {}, firstOfficeDate = null, selectedEditDate = null;
+    let currentYear, currentMonth, multiSelectMode = false, selectedDates = [], cycles = [];
+
+    function updateMonthNameDisplay(year, month) {
+      const monthName = new Date(year, month, 1).toLocaleString('default', { month: 'long', year: 'numeric' });
+      document.getElementById('monthNameDisplay').innerText = monthName;
+    }
 
     function login() {
       const email = document.getElementById("email").value.trim();
       const password = document.getElementById("password").value;
-      auth.signInWithEmailAndPassword(email, password)
-        .then(() => {})
-        .catch(err => alert("Login failed: " + err.message));
+      auth.signInWithEmailAndPassword(email, password).catch(err => alert("Login failed: " + err.message));
     }
 
     function signup() {
@@ -234,8 +237,7 @@
         .then(() => {
           document.getElementById("email").value = "";
           document.getElementById("password").value = "";
-        })
-        .catch(err => alert("Logout failed: " + err.message));
+        }).catch(err => alert("Logout failed: " + err.message));
     }
 
     auth.onAuthStateChanged(user => {
@@ -246,17 +248,10 @@
         document.getElementById("userInfo").innerText = "Logged in as " + user.email;
         document.getElementById("statsPanel").style.display = "inline-block";
         db.collection("attendance").doc(userId).get().then(doc => {
-          if (doc.exists) {
-            const data = doc.data();
-            cycles = data.cycles ? data.cycles : [];
-          } else {
-            cycles = [];
-          }
+          cycles = doc.exists && doc.data().cycles ? doc.data().cycles : [];
           displayCycles();
           if (!currentYear || !currentMonth) {
-            const today = new Date();
-            currentYear = today.getFullYear();
-            currentMonth = today.getMonth();
+            const today = new Date(); currentYear = today.getFullYear(); currentMonth = today.getMonth();
           }
           loadCloudData();
         });
@@ -268,6 +263,7 @@
         document.getElementById("logoutBtn").style.display = "none";
         document.getElementById("userInfo").innerText = "";
         document.getElementById("calendarContainer").innerHTML = "";
+        document.getElementById("monthNameDisplay").innerText = "";
         document.getElementById("statsPanel").style.display = "none";
         document.getElementById("editPanel").style.display = "none";
         document.getElementById("batchEditPanel").style.display = "none";
@@ -277,18 +273,12 @@
     function saveAttendanceData(year, month) {
       if (!userId) return;
       const docKey = `${year}_${month}`;
-      db.collection("attendance").doc(userId).set({
-        [docKey]: attendanceMap
-      }, { merge: true });
+      db.collection("attendance").doc(userId).set({ [docKey]: attendanceMap }, { merge: true });
     }
-
     function saveCyclesToFirestore() {
       if (!userId) return;
-      db.collection("attendance").doc(userId).set({
-        cycles: cycles
-      }, { merge: true });
+      db.collection("attendance").doc(userId).set({ cycles: cycles }, { merge: true });
     }
-
     function loadCloudData() {
       if (!userId) return;
       const docKey = `${currentYear}_${currentMonth}`;
@@ -309,108 +299,74 @@
         resetEditPanel();
       });
     }
-
     function init() {
       const startDateStr = document.getElementById("startDate").value;
-      if (!startDateStr) {
-        alert("Please select the first office night date.");
-        return;
-      }
-      if (!userId) {
-        alert("Please log in before initializing.");
-        return;
-      }
+      if (!startDateStr) return alert("Please select the first office night date.");
+      if (!userId) return alert("Please log in before initializing.");
       firstOfficeDate = new Date(startDateStr);
       currentYear = firstOfficeDate.getFullYear();
       currentMonth = firstOfficeDate.getMonth();
       loadCloudData();
     }
-
     function initializeMonthData(year, month) {
       attendanceMap = {};
-      const monthStart = new Date(year, month, 1);
-      const monthEnd = new Date(year, month + 1, 0);
+      const monthStart = new Date(year, month, 1), monthEnd = new Date(year, month + 1, 0);
       let date = new Date(monthStart);
       while (date <= monthEnd) {
         const dateStr = date.toISOString().slice(0, 10);
         let status = "Off";
         if (firstOfficeDate) {
           const diffDays = Math.floor((date - firstOfficeDate) / (1000 * 60 * 60 * 24));
-          if (diffDays >= 0) {
-            status = diffDays % 2 === 0 ? "Office" : "Off";
-          }
+          if (diffDays >= 0) status = diffDays % 2 === 0 ? "Office" : "Off";
         }
         attendanceMap[dateStr] = { status: status, notes: "" };
         date.setDate(date.getDate() + 1);
       }
     }
-
     function drawCalendar(year, month) {
-      const weekDays = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
-      const monthStart = new Date(year, month, 1);
-      const monthEnd = new Date(year, month + 1, 0);
+      updateMonthNameDisplay(year, month);
+      const weekDays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+      const monthStart = new Date(year, month, 1), monthEnd = new Date(year, month + 1, 0);
       let table = `<table class="calendar-table"><tr>${weekDays.map(w => `<th>${w}</th>`).join('')}</tr>`;
-      let weekRow = [];
-      let datePointer = new Date(monthStart);
-
-      for(let i=0;i<datePointer.getDay();i++) weekRow.push(`<td></td>`);
-
-      while(datePointer <= monthEnd) {
-        const dateStr = datePointer.toISOString().slice(0,10);
+      let weekRow = [], datePointer = new Date(monthStart);
+      for (let i = 0; i < datePointer.getDay(); i++) weekRow.push(`<td></td>`);
+      while (datePointer <= monthEnd) {
+        const dateStr = datePointer.toISOString().slice(0, 10);
         const entry = attendanceMap[dateStr];
-        let cellClass = entry ? entry.status.toLowerCase() : "";
-        let extraClass = "";
-        if(multiSelectMode && selectedDates.includes(dateStr)) extraClass = " selected";
-
+        let cellClass = entry ? entry.status.toLowerCase() : "", extraClass = "";
+        if (multiSelectMode && selectedDates.includes(dateStr)) extraClass = " selected";
         let cycleHighlightStyle = "";
-        cycles.forEach(cycle => {
-          if(dateStr >= cycle.start && dateStr <= cycle.end){
-            cycleHighlightStyle = `style="background-color: ${cycle.color} !important;"`;
-          }
-        });
-
-        let dayName = datePointer.toLocaleDateString('default',{weekday:'long'});
+        cycles.forEach(cycle => { if (dateStr >= cycle.start && dateStr <= cycle.end) cycleHighlightStyle = `style="background-color: ${cycle.color} !important;"`; });
+        let dayName = datePointer.toLocaleDateString('default', { weekday: 'long' });
         let notesHtml = entry && entry.notes ? `<div class="notes">${entry.notes}</div>` : "";
-
         weekRow.push(`<td class="${cellClass}${extraClass}" ${cycleHighlightStyle} data-date="${dateStr}">
           <div class="day-number">${datePointer.getDate()}</div>
           <div class="day-name">${dayName}</div>
           <div class="status">${entry ? entry.status : ""}</div>${notesHtml}</td>`);
-
-        if(datePointer.getDay()===6){
-          table += `<tr>${weekRow.join('')}</tr>`;
-          weekRow = [];
-        }
-        datePointer.setDate(datePointer.getDate()+1);
+        if (datePointer.getDay() === 6) { table += `<tr>${weekRow.join('')}</tr>`; weekRow = []; }
+        datePointer.setDate(datePointer.getDate() + 1);
       }
-
-      if(weekRow.length>0){
-        while(weekRow.length<7) weekRow.push(`<td></td>`);
-        table += `<tr>${weekRow.join('')}</tr>`;
-      }
+      if (weekRow.length > 0) { while (weekRow.length < 7) weekRow.push(`<td></td>`); table += `<tr>${weekRow.join('')}</tr>`; }
       table += `</table>`;
       const container = document.getElementById("calendarContainer");
       container.innerHTML = table;
       document.getElementById("selectedCount").innerText = selectedDates.length;
-
       container.querySelectorAll("td[data-date]").forEach(td => {
         td.onclick = () => {
           const dateStr = td.getAttribute("data-date");
-          if(multiSelectMode) toggleDateSelected(dateStr, td);
+          if (multiSelectMode) toggleDateSelected(dateStr, td);
           else editAttendance(dateStr, td);
         }
       });
     }
-
-    function resetEditPanel(){
+    function resetEditPanel() {
       document.getElementById("editPanel").style.display = "none";
       document.getElementById("batchEditPanel").style.display = multiSelectMode ? "block" : "none";
       selectedEditDate = null;
       document.querySelectorAll(".calendar-table td").forEach(td => td.classList.remove("selected"));
     }
-
-    function editAttendance(dateStr, cell){
-      if(multiSelectMode) return;
+    function editAttendance(dateStr, cell) {
+      if (multiSelectMode) return;
       selectedEditDate = dateStr;
       document.querySelectorAll(".calendar-table td").forEach(td => td.classList.remove("selected"));
       cell.classList.add("selected");
@@ -421,9 +377,8 @@
       document.getElementById("editPanel").style.display = "block";
       document.getElementById("batchEditPanel").style.display = "none";
     }
-
-    function saveEdit(){
-      if(!selectedEditDate) return;
+    function saveEdit() {
+      if (!selectedEditDate) return;
       attendanceMap[selectedEditDate].status = document.getElementById("editStatus").value;
       attendanceMap[selectedEditDate].notes = document.getElementById("noteInput").value;
       saveAttendanceData(currentYear, currentMonth);
@@ -431,12 +386,8 @@
       updateStats();
       resetEditPanel();
     }
-
-    function cancelEdit(){
-      resetEditPanel();
-    }
-
-    function toggleMultiSelect(){
+    function cancelEdit() { resetEditPanel(); }
+    function toggleMultiSelect() {
       multiSelectMode = !multiSelectMode;
       selectedDates = [];
       const btn = document.getElementById("multiSelectBtn");
@@ -446,18 +397,13 @@
       document.getElementById("batchEditPanel").style.display = multiSelectMode ? "block" : "none";
       drawCalendar(currentYear, currentMonth);
     }
-
-    function toggleDateSelected(dateStr, cell){
-      if(selectedDates.includes(dateStr)){
-        selectedDates = selectedDates.filter(d => d !== dateStr);
-      } else {
-        selectedDates.push(dateStr);
-      }
+    function toggleDateSelected(dateStr, cell) {
+      if (selectedDates.includes(dateStr)) selectedDates = selectedDates.filter(d => d !== dateStr);
+      else selectedDates.push(dateStr);
       drawCalendar(currentYear, currentMonth);
       document.getElementById("selectedCount").innerText = selectedDates.length;
     }
-
-    function applyBatchEdit(){
+    function applyBatchEdit() {
       const batchStatus = document.getElementById("batchEditStatus").value;
       const batchNote = document.getElementById("batchNoteInput").value;
       selectedDates.forEach(dateStr => {
@@ -470,168 +416,142 @@
       selectedDates = [];
       document.getElementById("selectedCount").innerText = 0;
     }
-
-    function updateStats(){
-      let officeCount=0, leaveCount=0, offCount=0;
+    function updateStats() {
+      let officeCount = 0, leaveCount = 0, offCount = 0;
       Object.values(attendanceMap).forEach(entry => {
-        if(entry.status==="Office") officeCount++;
-        else if(entry.status==="Leave") leaveCount++;
-        else if(entry.status==="Off") offCount++;
+        if (entry.status === "Office") officeCount++;
+        else if (entry.status === "Leave") leaveCount++;
+        else if (entry.status === "Off") offCount++;
       });
       const total = officeCount + leaveCount + offCount;
-      const percent = total >0 ? ((officeCount/total)*100).toFixed(1) : 0;
+      const percent = total > 0 ? ((officeCount / total) * 100).toFixed(1) : 0;
       document.getElementById("statOffice").innerText = `Office Nights: ${officeCount}`;
       document.getElementById("statLeave").innerText = `Leave Nights: ${leaveCount}`;
       document.getElementById("statOff").innerText = `Off Nights: ${offCount}`;
       document.getElementById("statAttendancePct").innerText = `Attendance %: ${percent}%`;
     }
-
-    function prevMonth(){
-      if(currentMonth===undefined || currentYear===undefined) return;
+    function prevMonth() {
+      if (currentMonth === undefined || currentYear === undefined) return;
       currentMonth--;
-      if(currentMonth<0){
-        currentMonth=11; currentYear--;
-      }
+      if (currentMonth < 0) { currentMonth = 11; currentYear--; }
       loadCloudData();
       resetEditPanel();
       selectedDates = [];
     }
-
-    function nextMonth(){
-      if(currentMonth===undefined || currentYear===undefined) return;
+    function nextMonth() {
+      if (currentMonth === undefined || currentYear === undefined) return;
       currentMonth++;
-      if(currentMonth>11){
-        currentMonth=0; currentYear++;
-      }
+      if (currentMonth > 11) { currentMonth = 0; currentYear++; }
       loadCloudData();
       resetEditPanel();
       selectedDates = [];
     }
-
-    function exportCalendarPDF(){
+    function exportCalendarPDF() {
       const { jsPDF } = window.jspdf;
-      const doc = new jsPDF({ orientation:"landscape", format:"a3" });
+      const doc = new jsPDF({ orientation: "landscape", format: "a3" });
       doc.setFontSize(20);
-      doc.text("Night Shift Attendance Calendar",15,25);
-      const monthName = new Date(currentYear,currentMonth,1).toLocaleString("default",{month:"long"});
+      doc.text("Night Shift Attendance Calendar", 15, 25);
+      const monthName = new Date(currentYear, currentMonth, 1).toLocaleString("default", { month: "long", year: "numeric" });
       doc.setFontSize(14);
-      doc.text(`${monthName} ${currentYear}`,15,45);
-
-      let yCursor=55;
+      doc.text(`${monthName}`, 15, 45);
+      let yCursor = 55;
       doc.setFontSize(13);
-      doc.text("Cycles:",15,yCursor);
-      yCursor+=8;
-      cycles.forEach((cycle,idx)=>{
+      doc.text("Cycles:", 15, yCursor);
+      yCursor += 8;
+      cycles.forEach((cycle, idx) => {
         doc.setFontSize(12);
         doc.setTextColor(cycle.color);
-        doc.text(`Cycle ${idx+1}: ${cycle.start} to ${cycle.end}   Color:`,22,yCursor);
-        doc.setDrawColor(0,0,0);
+        doc.text(`Cycle ${idx + 1}: ${cycle.start} to ${cycle.end}   Color:`, 22, yCursor);
+        doc.setDrawColor(0, 0, 0);
         doc.setFillColor(cycle.color);
-        doc.rect(115,yCursor-7,18,7,"F");
-        doc.setTextColor(0,0,0);
-        yCursor+=9;
+        doc.rect(115, yCursor - 7, 18, 7, "F");
+        doc.setTextColor(0, 0, 0);
+        yCursor += 9;
       });
-
-      const cellW=36, cellH=27, xStart=25, yStart=yCursor+10;
-      const weekDays=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
-      weekDays.forEach((day,idx)=>{
+      const cellW = 36, cellH = 27, xStart = 25, yStart = yCursor + 10;
+      const weekDays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+      weekDays.forEach((day, idx) => {
         doc.setFillColor(220,220,220);
-        doc.rect(xStart+idx*cellW,yStart,cellW,cellH,"F");
+        doc.rect(xStart + idx * cellW, yStart, cellW, cellH, "F");
         doc.setTextColor(0);
         doc.setFontSize(13);
-        doc.text(day,xStart+9+idx*cellW,yStart+18);
+        doc.text(day, xStart + 9 + idx * cellW, yStart + 18);
       });
-
-      let datePointer=new Date(currentYear,currentMonth,1);
-      let firstCol=datePointer.getDay();
-      let row=1, col=firstCol;
-
-      while(datePointer.getMonth()===currentMonth){
-        const dateStr=datePointer.toISOString().slice(0,10);
-        const cellX=xStart+col*cellW;
-        const cellY=yStart+row*cellH;
-        const entry=attendanceMap[dateStr];
-
-        let fill=[255,255,255];
-        for(let c of cycles){
-          if(dateStr>=c.start && dateStr<=c.end){
-            fill=hexToRgbArray(c.color);
+      let datePointer = new Date(currentYear, currentMonth, 1), firstCol = datePointer.getDay(), row = 1, col = firstCol;
+      while (datePointer.getMonth() === currentMonth) {
+        const dateStr = datePointer.toISOString().slice(0, 10);
+        const cellX = xStart + col * cellW, cellY = yStart + row * cellH;
+        const entry = attendanceMap[dateStr];
+        let fill = [255, 255, 255];
+        for (let c of cycles) {
+          if (dateStr >= c.start && dateStr <= c.end) {
+            fill = hexToRgbArray(c.color);
             break;
           }
         }
-        let statusText="",notesText="";
-        if(entry){
-          if(entry.status==="Office") statusText="Office";
-          else if(entry.status==="Leave") statusText="Leave";
-          else if(entry.status==="Off") statusText="Off";
-          notesText=entry.notes||"";
+        let statusText = "", notesText = "";
+        if (entry) {
+          if (entry.status === "Office") statusText = "Office";
+          else if (entry.status === "Leave") statusText = "Leave";
+          else if (entry.status === "Off") statusText = "Off";
+          notesText = entry.notes || "";
         }
         doc.setFillColor(...fill);
-        doc.rect(cellX,cellY,cellW,cellH,"F");
+        doc.rect(cellX, cellY, cellW, cellH, "F");
         doc.setDrawColor(180,180,180);
-        doc.rect(cellX,cellY,cellW,cellH);
+        doc.rect(cellX, cellY, cellW, cellH);
         doc.setFontSize(12);
-        doc.text(String(datePointer.getDate()),cellX+4,cellY+12);
+        doc.text(String(datePointer.getDate()), cellX+4, cellY+12);
         doc.setFontSize(9);
-        const dayAbbr=datePointer.toLocaleDateString('default',{weekday:'short'});
-        doc.text(dayAbbr,cellX+4,cellY+21);
+        const dayAbbr = datePointer.toLocaleDateString('default', { weekday: 'short' });
+        doc.text(dayAbbr, cellX+4, cellY+21);
         doc.setFontSize(11);
-        doc.text(statusText,cellX+4,cellY+25);
-        if(notesText){
-          doc.setFontSize(8);
-          doc.text(notesText,cellX+2,cellY+27);
-        }
+        doc.text(statusText, cellX+4, cellY+25);
+        if (notesText) { doc.setFontSize(8); doc.text(notesText, cellX+2, cellY+27); }
         doc.setFontSize(12);
-        if(col===6){
-          col=0;
-          row++;
-        }else col++;
-        datePointer.setDate(datePointer.getDate()+1);
+        if (col === 6) { col = 0; row++; } else col++;
+        datePointer.setDate(datePointer.getDate() + 1);
       }
       doc.save("attendance_calendar.pdf");
     }
-
-    function hexToRgbArray(hex){
-      hex=hex.replace("#","");
+    function hexToRgbArray(hex) {
+      hex = hex.replace("#","");
       if(hex.length===3) hex=hex.split('').map(x=>x+x).join('');
-      const num=parseInt(hex,16);
-      return [(num>>16)&255,(num>>8)&255,num&255];
+      const num = parseInt(hex,16);
+      return [(num >> 16) & 255, (num >> 8) & 255, num & 255];
     }
-
-    function addCycle(){
-      const startStr=document.getElementById("cycleStartInput").value;
-      const endStr=document.getElementById("cycleEndInput").value;
-      const colorStr=document.getElementById("cycleColorInput").value||"#ffd700";
-      if(!startStr || !endStr || new Date(endStr)<new Date(startStr)){
+    function addCycle() {
+      const startStr = document.getElementById("cycleStartInput").value;
+      const endStr = document.getElementById("cycleEndInput").value;
+      const colorStr = document.getElementById("cycleColorInput").value || "#ffd700";
+      if (!startStr || !endStr || new Date(endStr) < new Date(startStr)) {
         alert("Please provide valid start and end dates.");
         return;
       }
-      cycles.push({start:startStr,end:endStr,color:colorStr});
+      cycles.push({ start: startStr, end: endStr, color: colorStr });
       saveCyclesToFirestore();
       displayCycles();
-      drawCalendar(currentYear,currentMonth);
-      document.getElementById("cycleStartInput").value="";
-      document.getElementById("cycleEndInput").value="";
-      document.getElementById("cycleColorInput").value="#ffd700";
+      drawCalendar(currentYear, currentMonth);
+      document.getElementById("cycleStartInput").value = "";
+      document.getElementById("cycleEndInput").value = "";
+      document.getElementById("cycleColorInput").value = "#ffd700";
     }
-
-    function displayCycles(){
-      let html="";
-      cycles.forEach((cycle,idx)=>{
-        html+=`<div style="margin-bottom:4px;">
-          <span style="font-weight:bold; color:${cycle.color}">Cycle ${idx+1}:</span>
+    function displayCycles() {
+      let html = '';
+      cycles.forEach((cycle, idx) => {
+        html += `<div style="margin-bottom:4px;">
+          <span style="font-weight:bold; color:${cycle.color}">Cycle ${idx + 1}:</span>
           <span>${cycle.start} to ${cycle.end}</span>
           <button onclick="removeCycle(${idx})" style="font-size:12px;">Delete</button>
         </div>`;
       });
-      document.getElementById("cyclesList").innerHTML=html;
+      document.getElementById("cyclesList").innerHTML = html;
     }
-
-    function removeCycle(idx){
-      cycles.splice(idx,1);
+    function removeCycle(idx) {
+      cycles.splice(idx, 1);
       saveCyclesToFirestore();
       displayCycles();
-      drawCalendar(currentYear,currentMonth);
+      drawCalendar(currentYear, currentMonth);
     }
   </script>
 </body>
